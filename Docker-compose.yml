@@ -1,0 +1,51 @@
+services:
+  sql-server:
+     # Azure SQL Edge is lighter, but you can use 'mcr.microsoft.com/mssql/server:2022-latest' for the full version
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    container_name: mssql-container
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong!Pass123  # MUST have Caps, Numbers, and Symbols
+      - MSSQL_PID=Developer                 # Sets the edition (Developer, Express, etc.)
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql             # Persists your data even if the container is deleted
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-U", "sa", "-P", "YourStrong!Pass123", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db_backend
+
+  database_service:
+    depends_on:
+      sql-server:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_KAFKA_CONSUMER_GROUP_ID=database_service_group
+      - KAFKA_RETRY_ATTEMPTS=3
+      - KAFKA_RETRY_INTERVAL_MS=2000
+      - KAFKA_TOPIC_NAME=mainframe-raw-data
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    networks:
+      - db_backend 
+      - kafka_network
+
+  
+
+volumes:
+  sql_data:
+
+networks:
+  db_backend:
+    driver: bridge
+  kafka_network:
+    external: true
+    name: shared-kafka-bus
